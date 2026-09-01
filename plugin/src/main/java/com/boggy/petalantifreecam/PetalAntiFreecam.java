@@ -43,7 +43,7 @@ public final class PetalAntiFreecam extends JavaPlugin {
             return;
         }
 
-        refreshScheduler = new ChunkRefreshScheduler(this, configurationManager);
+        refreshScheduler = new ChunkRefreshScheduler(this, configurationManager, nmsAccess);
         visibilityService = new PlayerVisibilityManager(configurationManager, refreshScheduler);
         packetInterceptor = nmsAccess.createInterceptor(this, visibilityService, configurationManager);
 

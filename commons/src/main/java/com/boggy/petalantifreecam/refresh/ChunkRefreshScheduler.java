@@ -1,6 +1,7 @@
 package com.boggy.petalantifreecam.refresh;
 
 import com.boggy.petalantifreecam.config.ConfigurationManager;
+import com.boggy.petalantifreecam.nms.NmsAccess;
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -12,7 +13,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Queue;
-import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
@@ -20,13 +21,15 @@ public final class ChunkRefreshScheduler {
 
     private final Plugin plugin;
     private final ConfigurationManager configurationManager;
+    private final NmsAccess nmsAccess;
     private final Queue<PlayerChunkRefreshQueue> playerRefreshQueues = new ConcurrentLinkedQueue<>();
-    private final Set<ChunkRefreshKey> pendingRefreshes = ConcurrentHashMap.newKeySet();
+    private final ConcurrentHashMap<UUID, Integer> enqueueGenerations = new ConcurrentHashMap<>();
     private ScheduledTask task;
 
-    public ChunkRefreshScheduler(Plugin plugin, ConfigurationManager configurationManager) {
+    public ChunkRefreshScheduler(Plugin plugin, ConfigurationManager configurationManager, NmsAccess nmsAccess) {
         this.plugin = plugin;
         this.configurationManager = configurationManager;
+        this.nmsAccess = nmsAccess;
     }
 
     public void start() {
@@ -43,18 +46,18 @@ public final class ChunkRefreshScheduler {
             task = null;
         }
         playerRefreshQueues.clear();
-        pendingRefreshes.clear();
+        enqueueGenerations.clear();
     }
 
     public void enqueue(Player player) {
         World world = player.getWorld();
+        UUID playerId = player.getUniqueId();
+        int generation = enqueueGenerations.merge(playerId, 1, Integer::sum);
         List<ChunkRefreshKey> refreshKeys = new ArrayList<>();
 
+        UUID worldId = world.getUID();
         for (long chunkKey : player.getSentChunkKeys()) {
-            ChunkRefreshKey refreshKey = new ChunkRefreshKey(world.getUID(), chunkKey);
-            if (pendingRefreshes.add(refreshKey)) {
-                refreshKeys.add(refreshKey);
-            }
+            refreshKeys.add(new ChunkRefreshKey(playerId, worldId, chunkKey));
         }
 
         if (refreshKeys.isEmpty()) {
@@ -67,7 +70,11 @@ public final class ChunkRefreshScheduler {
         refreshKeys.sort(Comparator.comparingLong(
                 refreshKey -> distanceSquared(refreshKey, playerChunkX, playerChunkZ)
         ));
-        playerRefreshQueues.add(new PlayerChunkRefreshQueue(refreshKeys));
+        playerRefreshQueues.add(new PlayerChunkRefreshQueue(generation, refreshKeys));
+    }
+
+    public void cancel(Player player) {
+        enqueueGenerations.remove(player.getUniqueId());
     }
 
     public void executeForPlayer(Player player, Runnable action) {
@@ -80,14 +87,20 @@ public final class ChunkRefreshScheduler {
 
     private void processBudget() {
         int budget = configurationManager.current().chunkRefreshBudgetPerTick();
-        for (int processed = 0; processed < budget; processed++) {
+        for (int processed = 0; processed < budget; ) {
             PlayerChunkRefreshQueue playerQueue = playerRefreshQueues.poll();
             if (playerQueue == null) {
                 return;
             }
 
             ChunkRefreshKey refreshKey = playerQueue.poll();
+            Integer currentGeneration = enqueueGenerations.get(refreshKey.playerId());
+            if (currentGeneration == null || currentGeneration != playerQueue.generation()) {
+                continue;
+            }
+
             scheduleRefresh(refreshKey);
+            processed++;
 
             if (playerQueue.hasRemaining()) {
                 playerRefreshQueues.add(playerQueue);
@@ -104,33 +117,32 @@ public final class ChunkRefreshScheduler {
     private void scheduleRefresh(ChunkRefreshKey refreshKey) {
         World world = plugin.getServer().getWorld(refreshKey.worldId());
         if (world == null) {
-            pendingRefreshes.remove(refreshKey);
             return;
         }
 
         int chunkX = (int) refreshKey.chunkKey();
         int chunkZ = (int) (refreshKey.chunkKey() >>> 32);
+        int hideBlocksBelowY = configurationManager.current().hideBlocksBelowY();
 
         if (Bukkit.isOwnedByCurrentRegion(world, chunkX, chunkZ)) {
-            pendingRefreshes.remove(refreshKey);
-            refresh(world, chunkX, chunkZ);
+            refresh(refreshKey, world, chunkX, chunkZ, hideBlocksBelowY);
             return;
         }
 
-        plugin.getServer().getRegionScheduler().execute(plugin, world, chunkX, chunkZ, () -> {
-            pendingRefreshes.remove(refreshKey);
-            refresh(world, chunkX, chunkZ);
-        });
+        plugin.getServer().getRegionScheduler().execute(plugin, world, chunkX, chunkZ, () ->
+                refresh(refreshKey, world, chunkX, chunkZ, hideBlocksBelowY)
+        );
     }
 
-    private void refresh(World world, int chunkX, int chunkZ) {
-        if (!world.isChunkLoaded(chunkX, chunkZ)) {
+    private void refresh(ChunkRefreshKey refreshKey, World world, int chunkX, int chunkZ, int hideBlocksBelowY) {
+        Player player = plugin.getServer().getPlayer(refreshKey.playerId());
+        if (player == null || !player.isOnline() || !player.getWorld().equals(world)) {
             return;
         }
-        if (world.getPlayersSeeingChunk(chunkX, chunkZ).isEmpty()) {
+        if (!player.isChunkSent(refreshKey.chunkKey())) {
             return;
         }
 
-        world.refreshChunk(chunkX, chunkZ);
+        nmsAccess.refreshChunkForPlayer(player, world, chunkX, chunkZ, hideBlocksBelowY);
     }
 }

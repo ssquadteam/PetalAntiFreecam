@@ -54,6 +54,7 @@ public final class PlayerVisibilityManager {
 
     public void untrack(Player player) {
         maskingPlayers.remove(player.getUniqueId());
+        refreshScheduler.cancel(player);
     }
 
     public void applyReload(Collection<? extends Player> players) {
