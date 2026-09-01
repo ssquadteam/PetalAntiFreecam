@@ -1,0 +1,5 @@
+restore-below-y: 30 # at what point we send the full chunk
+hide-blocks-below-y: 16 # cutoff for blocks in the chunk
+
+# Global budget so that we don't accidentally nuke netty
+chunk-refresh-budget-per-tick: 16
