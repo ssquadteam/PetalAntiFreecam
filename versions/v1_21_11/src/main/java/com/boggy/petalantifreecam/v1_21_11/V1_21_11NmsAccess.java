@@ -1,4 +1,4 @@
-package com.boggy.petalantifreecam.v26_2;
+package com.boggy.petalantifreecam.v1_21_11;
 
 import com.boggy.petalantifreecam.config.ConfigurationManager;
 import com.boggy.petalantifreecam.nms.NmsAccess;
@@ -8,11 +8,11 @@ import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
-public final class V26_2NmsAccess implements NmsAccess {
+public final class V1_21_11NmsAccess implements NmsAccess {
 
     @Override
     public boolean supports(String minecraftVersion) {
-        return minecraftVersion.startsWith("26.2");
+        return minecraftVersion.startsWith("1.21.11");
     }
 
     @Override
@@ -21,7 +21,7 @@ public final class V26_2NmsAccess implements NmsAccess {
             PlayerVisibilityManager visibility,
             ConfigurationManager configuration
     ) {
-        return new V26_2PacketInterceptor(plugin, visibility, configuration);
+        return new V1_21_11PacketInterceptor(plugin, visibility, configuration);
     }
 
     @Override

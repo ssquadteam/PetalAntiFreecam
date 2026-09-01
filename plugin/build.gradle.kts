@@ -6,6 +6,7 @@ dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
     implementation(project(":commons"))
     implementation(project(":versions:v26_2"))
+    implementation(project(":versions:v1_21_11"))
 }
 
 tasks {

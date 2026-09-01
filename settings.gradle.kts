@@ -15,3 +15,4 @@ rootProject.name = "PetalAntiFreecam"
 include("commons")
 include("plugin")
 include("versions:v26_2")
+include("versions:v1_21_11")

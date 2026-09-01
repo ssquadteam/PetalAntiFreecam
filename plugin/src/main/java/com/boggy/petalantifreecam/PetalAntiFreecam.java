@@ -7,6 +7,7 @@ import com.boggy.petalantifreecam.nms.PacketInterceptor;
 import com.boggy.petalantifreecam.player.PlayerVisibilityListener;
 import com.boggy.petalantifreecam.player.PlayerVisibilityManager;
 import com.boggy.petalantifreecam.refresh.ChunkRefreshScheduler;
+import com.boggy.petalantifreecam.v1_21_11.V1_21_11NmsAccess;
 import com.boggy.petalantifreecam.v26_2.V26_2NmsAccess;
 import org.bukkit.Bukkit;
 import org.bukkit.command.PluginCommand;
@@ -17,7 +18,7 @@ import java.util.Objects;
 
 public final class PetalAntiFreecam extends JavaPlugin {
 
-    private static final List<NmsAccess> ACCESSES = List.of(new V26_2NmsAccess());
+    private static final List<NmsAccess> ACCESSES = List.of(new V1_21_11NmsAccess(), new V26_2NmsAccess());
 
     private ChunkRefreshScheduler refreshScheduler;
     private PlayerVisibilityManager visibilityService;

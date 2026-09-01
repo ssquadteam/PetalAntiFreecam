@@ -2,7 +2,7 @@ name: PetalAntiFreecam
 version: '${version}'
 
 main: com.boggy.petalantifreecam.PetalAntiFreecam
-api-version: '26.2'
+api-version: '1.21.11'
 load: POSTWORLD
 folia-supported: true
 canvas-supported: true
