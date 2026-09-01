@@ -2,7 +2,6 @@ package com.boggy.petalantifreecam.v1_21_11;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
-import io.papermc.paper.FeatureHooks;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.protocol.game.ClientboundLevelChunkPacketData;
@@ -10,19 +9,17 @@ import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
-
-import java.util.ArrayList;
-import java.util.List;
+import net.minecraft.world.level.chunk.PalettedContainerFactory;
 
 final class ChunkPacketMasker {
 
     private static final int SECTION_HEIGHT = 16;
 
-    private volatile LevelChunkSection emptyAirSection;
+    private final ThreadLocal<LevelChunkSection> partialScratch = new ThreadLocal<>();
+    private volatile PalettedContainerFactory emptyFactory;
+    private volatile byte[] emptySectionBytes;
 
     ClientboundLevelChunkWithLightPacket mask(
             ClientboundLevelChunkWithLightPacket original,
@@ -34,99 +31,108 @@ final class ChunkPacketMasker {
             return original;
         }
 
-        LevelChunk chunk = level.getChunkIfLoaded(original.getX(), original.getZ());
-        if (chunk == null) {
-            return original;
-        }
-
-        ByteBuf sectionBytes = Unpooled.buffer();
+        ClientboundLevelChunkPacketData chunkData = original.getChunkData();
+        FriendlyByteBuf in = chunkData.getReadBuffer();
+        ByteBuf sectionBytes = Unpooled.buffer(Math.max(32, in.readableBytes()));
         ByteBuf packetBytes = Unpooled.buffer();
         try {
             FriendlyByteBuf sectionBuf = new FriendlyByteBuf(sectionBytes);
-            writeMaskedSections(sectionBuf, chunk, hideBlocksBelowY);
+            writeMaskedSections(sectionBuf, in, level, hideBlocksBelowY);
 
             RegistryFriendlyByteBuf dataBuf = new RegistryFriendlyByteBuf(packetBytes, level.registryAccess());
-            NmsPacketAccess.encodeHeightmaps(dataBuf, original.getChunkData().getHeightmaps());
-            dataBuf.writeVarInt(sectionBytes.readableBytes());
-            dataBuf.writeBytes(sectionBytes);
-            NmsPacketAccess.encodeBlockEntities(dataBuf, blockEntitiesAbove(chunk, hideBlocksBelowY));
-            packetBytes.readerIndex(0);
-
-            ClientboundLevelChunkPacketData maskedData = new ClientboundLevelChunkPacketData(
-                    dataBuf,
-                    original.getX(),
-                    original.getZ()
-            );
-
-            packetBytes.clear();
             dataBuf.writeInt(original.getX());
             dataBuf.writeInt(original.getZ());
-            maskedData.write(dataBuf);
+            NmsPacketAccess.encodeHeightmaps(dataBuf, chunkData.getHeightmaps());
+            dataBuf.writeVarInt(sectionBytes.readableBytes());
+            dataBuf.writeBytes(sectionBytes);
+            NmsPacketAccess.encodeBlockEntities(dataBuf, NmsPacketAccess.blockEntitiesAbove(chunkData, hideBlocksBelowY));
             original.getLightData().write(dataBuf);
 
             ClientboundLevelChunkWithLightPacket masked = ClientboundLevelChunkWithLightPacket.STREAM_CODEC.decode(dataBuf);
             masked.setReady(true);
             return masked;
         } finally {
+            in.release();
             sectionBytes.release();
             packetBytes.release();
         }
     }
 
-    private void writeMaskedSections(FriendlyByteBuf buf, LevelChunk chunk, int hideBlocksBelowY) {
-        LevelChunkSection[] sections = chunk.getSections();
-        ServerLevel level = (ServerLevel) chunk.getLevel();
-        LevelChunkSection empty = emptyAir(chunk);
-
-        for (int sectionIndex = 0; sectionIndex < sections.length; sectionIndex++) {
+    private void writeMaskedSections(
+            FriendlyByteBuf out,
+            FriendlyByteBuf in,
+            ServerLevel level,
+            int hideBlocksBelowY
+    ) {
+        PalettedContainerFactory factory = level.palettedContainerFactory();
+        byte[] empty = emptySectionBytes(factory);
+        int sectionCount = level.getSectionsCount();
+        for (int sectionIndex = 0; sectionIndex < sectionCount; sectionIndex++) {
             int sectionMinY = level.getSectionYFromSectionIndex(sectionIndex) * SECTION_HEIGHT;
-            LevelChunkSection section = sections[sectionIndex];
-            if (sectionMinY + (SECTION_HEIGHT - 1) < hideBlocksBelowY) {
-                writeSection(buf, empty, sectionIndex);
-                continue;
-            }
             if (sectionMinY >= hideBlocksBelowY) {
-                writeSection(buf, section, sectionIndex);
+                out.writeBytes(in);
+                return;
+            }
+            if (sectionMinY + (SECTION_HEIGHT - 1) < hideBlocksBelowY) {
+                NmsPacketAccess.skipSection(in, factory);
+                out.writeBytes(empty);
                 continue;
             }
-            writePartialSection(buf, section, sectionIndex, hideBlocksBelowY - sectionMinY);
+            writePartialSection(out, in, level, hideBlocksBelowY - sectionMinY, sectionIndex);
         }
     }
 
-    private static void writePartialSection(FriendlyByteBuf buf, LevelChunkSection section, int sectionIndex, int hiddenLayers) {
-        LevelChunkSection copy = section.copy();
+    private void writePartialSection(
+            FriendlyByteBuf out,
+            FriendlyByteBuf in,
+            ServerLevel level,
+            int hiddenLayers,
+            int sectionIndex
+    ) {
+        LevelChunkSection scratch = partialScratch(level);
+        scratch.read(in);
         BlockState air = Blocks.AIR.defaultBlockState();
         for (int y = 0; y < hiddenLayers; y++) {
             for (int z = 0; z < SECTION_HEIGHT; z++) {
                 for (int x = 0; x < SECTION_HEIGHT; x++) {
-                    copy.setBlockState(x, y, z, air, false);
+                    scratch.setBlockState(x, y, z, air, false);
                 }
             }
         }
-        writeSection(buf, copy, sectionIndex);
+        scratch.write(out, null, sectionIndex);
     }
 
-    private static void writeSection(FriendlyByteBuf buf, LevelChunkSection section, int sectionIndex) {
-        section.write(buf, null, sectionIndex);
+    private LevelChunkSection partialScratch(ServerLevel level) {
+        LevelChunkSection scratch = partialScratch.get();
+        if (scratch == null) {
+            scratch = new LevelChunkSection(level.palettedContainerFactory());
+            partialScratch.set(scratch);
+        }
+        return scratch;
     }
 
-    private static List<Object> blockEntitiesAbove(LevelChunk chunk, int hideBlocksBelowY) {
-        List<Object> infos = new ArrayList<>();
-        for (BlockEntity blockEntity : chunk.getBlockEntities().values()) {
-            if (blockEntity.getBlockPos().getY() >= hideBlocksBelowY) {
-                infos.add(NmsPacketAccess.createBlockEntityInfo(blockEntity));
+    private byte[] emptySectionBytes(PalettedContainerFactory factory) {
+        byte[] cached = emptySectionBytes;
+        if (cached != null && emptyFactory == factory) {
+            return cached;
+        }
+        synchronized (this) {
+            cached = emptySectionBytes;
+            if (cached != null && emptyFactory == factory) {
+                return cached;
             }
+            LevelChunkSection empty = new LevelChunkSection(factory);
+            ByteBuf bytes = Unpooled.buffer(32);
+            try {
+                empty.write(new FriendlyByteBuf(bytes), null, 0);
+                cached = new byte[bytes.readableBytes()];
+                bytes.readBytes(cached);
+            } finally {
+                bytes.release();
+            }
+            emptyFactory = factory;
+            emptySectionBytes = cached;
+            return cached;
         }
-        return infos;
-    }
-
-    private LevelChunkSection emptyAir(LevelChunk chunk) {
-        LevelChunkSection cached = emptyAirSection;
-        if (cached == null) {
-            ServerLevel level = (ServerLevel) chunk.getLevel();
-            cached = FeatureHooks.createSection(level.palettedContainerFactory(), level, chunk.getPos(), 0);
-            emptyAirSection = cached;
-        }
-        return cached;
     }
 }

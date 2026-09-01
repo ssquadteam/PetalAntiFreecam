@@ -49,6 +49,9 @@ public final class PlayerVisibilityManager {
         }
 
         setMasking(playerId, shouldMask);
+        if (shouldMask) {
+            return;
+        }
         refreshScheduler.executeForPlayer(player, () -> refreshScheduler.enqueue(player), 2L);
     }
 
@@ -78,8 +81,7 @@ public final class PlayerVisibilityManager {
         boolean wasMasking = maskingPlayers.contains(playerId);
         boolean shouldMask = shouldMask(player.getLocation().getY(), settings);
         setMasking(playerId, shouldMask);
-
-        if (wasMasking != shouldMask) {
+        if (wasMasking && !shouldMask) {
             refreshScheduler.enqueue(player);
         }
     }
