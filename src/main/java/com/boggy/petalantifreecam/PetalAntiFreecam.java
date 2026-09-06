@@ -5,6 +5,7 @@ import com.boggy.petalantifreecam.config.ConfigurationManager;
 import com.boggy.petalantifreecam.packet.AirBlockStateIds;
 import com.boggy.petalantifreecam.packet.ChunkMasker;
 import com.boggy.petalantifreecam.packet.ChunkPacketListener;
+import com.boggy.petalantifreecam.player.CanvasVisibilityListener;
 import com.boggy.petalantifreecam.player.PlayerVisibilityListener;
 import com.boggy.petalantifreecam.player.PlayerVisibilityManager;
 import com.boggy.petalantifreecam.refresh.ChunkRefreshScheduler;
@@ -45,6 +46,12 @@ public final class PetalAntiFreecam extends JavaPlugin {
         visibilityService = new PlayerVisibilityManager(configurationManager, refreshScheduler);
 
         getServer().getPluginManager().registerEvents(new PlayerVisibilityListener(visibilityService), this);
+
+        try {
+            Class.forName("io.canvasmc.canvas.event.EntityTeleportAsyncEvent");
+            getServer().getPluginManager().registerEvents(new CanvasVisibilityListener(visibilityService), this);
+            getLogger().info("Detected CanvasMC - registered Canvas visibility listeners.");
+        } catch (final ClassNotFoundException ignored) {}
 
         ChunkPacketListener chunkPacketListener = new ChunkPacketListener(
                 visibilityService,

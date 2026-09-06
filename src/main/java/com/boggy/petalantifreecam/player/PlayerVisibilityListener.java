@@ -31,12 +31,17 @@ public final class PlayerVisibilityListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onTeleport(PlayerTeleportEvent event) {
-        updateWhenHeightChanges(event);
+        visibilityService.handleTeleport(event.getPlayer(), event.getTo());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onRespawn(PlayerRespawnEvent event) {
+        visibilityService.handleTeleport(event.getPlayer(), event.getRespawnLocation());
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onWorldChange(PlayerChangedWorldEvent event) {
-        visibilityService.update(event.getPlayer(), event.getPlayer().getLocation());
+        visibilityService.handleTeleport(event.getPlayer(), event.getPlayer().getLocation());
     }
 
     private void updateWhenHeightChanges(PlayerMoveEvent event) {

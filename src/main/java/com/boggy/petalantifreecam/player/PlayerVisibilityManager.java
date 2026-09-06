@@ -56,6 +56,24 @@ public final class PlayerVisibilityManager {
         maskingPlayers.remove(player.getUniqueId());
     }
 
+    public void handleTeleport(final Player player, final Location destination) {
+        final UUID playerId = player.getUniqueId();
+        final AntiFreecamSettings settings = configurationManager.current();
+
+        final boolean shouldMask = shouldMask(destination.getY(), settings);
+        setMasking(playerId, shouldMask);
+
+        if (!shouldMask) {
+            refreshScheduler.executeForPlayer(player, () -> {
+                if (!player.isOnline())
+                    return;
+
+                if (!isMasking(player.getUniqueId()))
+                    refreshScheduler.enqueue(player);
+            });
+        }
+    }
+
     public void applyReload(Collection<? extends Player> players) {
         AntiFreecamSettings currentSettings = configurationManager.current();
 
