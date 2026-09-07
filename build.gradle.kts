@@ -11,6 +11,7 @@ subprojects {
     repositories {
         mavenCentral()
         maven("https://maven.canvasmc.io/public")
+        maven("https://maven.canvasmc.io/snapshots")
         maven("https://repo.papermc.io/repository/maven-public/")
     }
 

@@ -4,6 +4,7 @@ import com.boggy.petalantifreecam.command.AntiFreecamCommand;
 import com.boggy.petalantifreecam.config.ConfigurationManager;
 import com.boggy.petalantifreecam.nms.NmsAccess;
 import com.boggy.petalantifreecam.nms.PacketInterceptor;
+import com.boggy.petalantifreecam.player.CanvasVisibilityListener;
 import com.boggy.petalantifreecam.player.PlayerVisibilityListener;
 import com.boggy.petalantifreecam.player.PlayerVisibilityManager;
 import com.boggy.petalantifreecam.refresh.ChunkRefreshScheduler;
@@ -52,6 +53,7 @@ public final class PetalAntiFreecam extends JavaPlugin {
                 new PlayerVisibilityListener(visibilityService, packetInterceptor),
                 this
         );
+        registerCanvasVisibilityListener();
 
         AntiFreecamCommand antiFreecamCommand = new AntiFreecamCommand(configurationManager, visibilityService, getServer());
         PluginCommand command = Objects.requireNonNull(getCommand("antifreecam"));
@@ -78,6 +80,15 @@ public final class PetalAntiFreecam extends JavaPlugin {
         if (visibilityService != null) {
             visibilityService.clear();
         }
+    }
+
+    private void registerCanvasVisibilityListener() {
+        try {
+            Class.forName("io.canvasmc.canvas.event.EntityPostTeleportAsyncEvent");
+        } catch (ClassNotFoundException ignored) {
+            return;
+        }
+        getServer().getPluginManager().registerEvents(new CanvasVisibilityListener(visibilityService), this);
     }
 
     private static NmsAccess resolveNmsAccess() {
