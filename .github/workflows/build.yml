@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -29,9 +32,24 @@ jobs:
         env:
           GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Xmx2g"
 
+      - name: Read version
+        id: version
+        run: echo "version=$(grep '^version=' gradle.properties | cut -d= -f2)" >> "$GITHUB_OUTPUT"
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: PetalAntiFreecam
           path: plugin/build/libs/PetalAntiFreecam-*.jar
           if-no-files-found: error
+
+      - name: Publish release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}-${{ github.run_number }}
+          name: PetalAntiFreecam ${{ steps.version.outputs.version }} #${{ github.run_number }}
+          files: plugin/build/libs/PetalAntiFreecam-*.jar
+          generate_release_notes: true
+          make_latest: true
+          fail_on_unmatched_files: true
