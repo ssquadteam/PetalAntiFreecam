@@ -84,7 +84,7 @@ public final class PetalAntiFreecam extends JavaPlugin {
 
     private void registerCanvasVisibilityListener() {
         try {
-            Class.forName("io.canvasmc.canvas.event.EntityPostTeleportAsyncEvent");
+            Class.forName("io.canvasmc.canvas.event.EntityTeleportAsyncEvent");
         } catch (ClassNotFoundException ignored) {
             return;
         }

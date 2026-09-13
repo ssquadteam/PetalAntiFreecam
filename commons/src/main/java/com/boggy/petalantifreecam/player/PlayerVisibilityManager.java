@@ -55,6 +55,25 @@ public final class PlayerVisibilityManager {
         refreshScheduler.executeForPlayer(player, () -> refreshScheduler.enqueue(player), 2L);
     }
 
+    public void handleTeleport(Player player, Location destination) {
+        if (destination == null) {
+            return;
+        }
+
+        boolean shouldMask = shouldMask(destination.getY(), configurationManager.current());
+        setMasking(player.getUniqueId(), shouldMask);
+        if (shouldMask) {
+            return;
+        }
+
+        refreshScheduler.executeForPlayer(player, () -> {
+            if (!player.isOnline() || isMasking(player.getUniqueId())) {
+                return;
+            }
+            refreshScheduler.enqueue(player);
+        });
+    }
+
     public void untrack(Player player) {
         maskingPlayers.remove(player.getUniqueId());
         refreshScheduler.cancel(player);
