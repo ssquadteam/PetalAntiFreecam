@@ -97,6 +97,7 @@ final class NmsPacketAccess {
 
     static void skipSection(FriendlyByteBuf buf, PalettedContainerFactory factory) {
         buf.readShort();
+        buf.readShort();
         skipPalettedContainer(buf, factory.blockStatesStrategy());
         skipPalettedContainer(buf, factory.biomeStrategy());
     }
